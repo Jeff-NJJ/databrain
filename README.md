@@ -375,3 +375,12 @@ print(brain.prompt_suffix('汤姆'))
 它的做法是只读 OB 的记忆桶、只往 YAML frontmatter 里加 `db_` 前缀字段，
 绝不碰 OB 自己的 valence/arousal/importance——OB 继续管"记了什么"，
 我们管"怎么看这个人"。等 OB 部署好了再用。
+
+---
+
+## 九、许可证
+
+MIT，见 `LICENSE`。代码与文档都可以自由使用、修改、再分发，不需要署名授权往来。
+`knowledge/` 下的综述是给引擎定参数用的文献笔记，DOI/PMID 都在正文里，
+要复核结论请直接顺着它们走，别把这里的转述当原文。
+

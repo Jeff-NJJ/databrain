@@ -465,3 +465,65 @@ N13–N14 服务器（我自己复现攻击时发现）、N15 交付包隐私指
 覆盖 N16/N17/N18/N19），末行 FAIL=0 SKIP=0。新探针做了反向对照：把四处修复还原成
 缺陷态 → `P-HTTP-R4` FAIL 并逐项指名。**无输出漂移**：real `53b6ee5a…`、
 compare `f66516ca…`、full `810fada6…`、det `b697bd61bf` 四个 md5 全程不变。
+
+---
+
+## M. 发布前（准备上传 GitHub 这一轮，2026-09-28）
+
+上传前把发布包再过了一遍。两类问题是前四轮都没覆盖的，共同成因很明确：
+**那四轮全部在 Linux 上跑**，而真实用户会在中文 Windows 控制台上按 README 原样运行。
+
+### M1 · 脱敏遗漏：构建机 Windows 用户目录（身份泄露，中）
+
+四处 docstring / 文档用法示例把本机绝对路径写死成
+`<盘符>:/Users/<本机用户名>/…/python.exe server.py`，共 5 处
+（`server.py`、`databrain/simulate.py`、`tools/validate.py`、
+`docs/数据化大脑_引擎报告.md` ×2），会把发布者本机用户名随包发出。统一改成 `python3`。
+
+**为什么四轮审查没抓到**：`tools/release_check.py` 的 `PATH_PATTERNS` 六条全是
+Unix 形态（容器目录、特权账户主目录、临时验证目录那一类，具体写法见工具源码），
+Windows 盘符形态根本不在判据里。
+已补一条大小写盘符都收（含 Git-Bash 挂载形态）的规则；前置 lookbehind 要求盘符
+字母左侧不是字母/数字，用以挡掉大写协议名这类「字母紧邻冒号」的假阳性。
+判据按仓库惯例写成字符类，四项实测：
+
+| 用例 | 结果 |
+|---|---|
+| 新判据是否匹配 `release_check.py` 自身源码 | 否，0 条自匹配 |
+| 五种泄露变体（大写盘符 / 反斜杠 / 小写盘符 / Home 形态等） | 5/5 命中 |
+| 十二种良性写法（`D:\\train`、DOI 长数字、`/c/Users/x`、大写协议名等） | 0 假阳性 |
+| 全仓逐文件复扫（含新判据） | 0 命中 |
+
+> 过程里踩到了这个工具自己警告过的坑：第一版把泄露形态当例子写进了新注释，
+> 于是 `release_check.py` 把自己判成 FAIL。判据文件的注释不能拼出完整可匹配串。
+
+### M2 · Windows 控制台：三个入口必崩，探针还把编码错读成 None
+
+中文 Windows（控制台代码页 GBK）下按 README 原样跑、不加任何环境变量：
+
+- `python tools/validate.py`、`python -m databrain.simulate`、`python tools/real_sim.py`
+  → `UnicodeEncodeError: 'gbk' codec can't encode character '\\u2705'`，
+  崩在打印 ✅ / sparkline `▁▂▃` 那行；`server.py` 启动即调 `simulate.run()`，同样会崩。
+- `python tools/probes_v2.py` → `AttributeError: 'NoneType' object has no attribute 'splitlines'`。
+  这条现象有欺骗性，成因值得记下来：`subprocess.run(text=True)` 不指定 `encoding`
+  时按 locale 解码子进程输出，GBK 解不动 UTF-8 字节时异常发生在 `subprocess` 的
+  reader **线程**里，被线程吞掉后只打到 stderr，`stdout` 返回 `None` ——
+  于是「读不到子进程输出」伪装成「探针代码写错了」。同一机制在别的机器上
+  能让 `P-RELEASE` / `P-ESC` 给出假结论。
+
+修复：四个 CLI 入口在入口处 `sys.stdout.reconfigure(encoding='utf-8')`；
+`tools/probes_v2.py` 的 5 处 `capture_output` 调用显式 `encoding='utf-8'`，
+并给子进程设 `PYTHONUTF8=1` —— 父侧读 UTF-8 与子侧写 UTF-8 必须是同一套解析，
+只改一侧会把中文读成乱码。Linux/macOS 上这些改动是 no-op。
+
+**验收（GBK 控制台，无 `PYTHONUTF8`/`PYTHONIOENCODING`）**：六个入口全部 rc=0
+（`probes_v2` 19 项 FAIL=0 SKIP=0、`validate`、`-m databrain.simulate`、`real_sim`、
+`audit_esc`、`face_test`）；`server.py` 起真实进程后 `/api/health` 200、
+`/api/data` 200。**无输出漂移**：`web/real.redacted.json` `53b6ee5a…`、
+`web/compare.redacted.json` `f66516ca…` 两个 md5 与第四轮记录一致。
+
+### M3 · 许可证
+
+补 `LICENSE`（MIT，作者选定）与 README 第九节。此前 `review_v3.md:495`、
+`review_v4.md:221` 把它列为发布前唯一待决项。版权行用 `DataBrain Maintainer`，
+与 git 提交身份一致，不落任何真实姓名。
