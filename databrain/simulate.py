@@ -15,6 +15,7 @@
 """
 
 import math
+import sys
 import json
 from collections import defaultdict, Counter
 from . import config as C
@@ -354,4 +355,7 @@ def run(days=180, seed=42, verbose=True):
 
 
 if __name__ == '__main__':
+    # 中文 Windows 控制台默认 GBK；✅/⚠ 和 sparkline 的 ▁▂▃ 都编不进去，
+    # 不显式改 UTF-8 会在打印那行崩（Linux/macOS 上 no-op）。
+    sys.stdout.reconfigure(encoding='utf-8')
     run(180, 42)

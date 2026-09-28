@@ -471,9 +471,9 @@ def p_release():
     build(good, False)
     build(bad, True)
     r1 = subprocess.run([sys.executable, rc_py, good, '--mode', 'public',
-                         '--names-file', names], capture_output=True, text=True)
+                         '--names-file', names], capture_output=True, text=True, encoding='utf-8')
     r2 = subprocess.run([sys.executable, rc_py, bad, '--mode', 'public',
-                         '--names-file', names], capture_output=True, text=True)
+                         '--names-file', names], capture_output=True, text=True, encoding='utf-8')
     caught = {'权限位': '[容器/权限位]' in r2.stdout,
               '指纹': '[泄露/语料指纹]' in r2.stdout,
               '真名': '[泄露/人名]' in r2.stdout,
@@ -498,7 +498,7 @@ def p_esc():
     """
     import subprocess
     py = os.path.join(ROOT, 'tools', 'audit_esc.py')
-    r1 = subprocess.run([sys.executable, py], capture_output=True, text=True)
+    r1 = subprocess.run([sys.executable, py], capture_output=True, text=True, encoding='utf-8')
     static_ok = r1.returncode == 0
     detail = []
     for line in r1.stdout.splitlines():
@@ -517,7 +517,7 @@ def p_esc():
         rec('P-ESC', 'SKIP', f"静态 clean({detail[0] if detail else '?'})；"
                              f"动态未跑（{'无 node' if not node else '缺 xss_render_test.js'}）")
         return
-    r2 = subprocess.run([node, js], capture_output=True, text=True, cwd=ROOT)
+    r2 = subprocess.run([node, js], capture_output=True, text=True, encoding='utf-8', cwd=ROOT)
     dyn = next((l for l in r2.stdout.splitlines()
                 if l.startswith('原样进入 DOM')), '动态无输出')
     kinds = next((l for l in r2.stdout.splitlines()
@@ -542,7 +542,7 @@ def p_http_r4():
     env.pop('DATABRAIN_TOKEN', None)
     env.pop('DATABRAIN_ALLOW_OPEN', None)
     r = subprocess.run([sys.executable, 'server.py'], cwd=ROOT, env=env,
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, encoding='utf-8', timeout=60)
     n16 = (r.returncode != 0 and '拒绝启动' in r.stderr)
 
     # 知情放行仍要能启动（退出码不能一刀切）
@@ -634,4 +634,9 @@ def main():
 
 
 if __name__ == '__main__':
+    # 中文 Windows 控制台默认 GBK：本进程打印要 UTF-8，子进程也要按 UTF-8 收发。
+    # 否则 text=True 用 locale 解码，reader thread 里的 UnicodeDecodeError 会被线程吞掉，
+    # stdout 变成 None，现象是 NoneType 报错而不是编码错。
+    sys.stdout.reconfigure(encoding='utf-8')
+    os.environ['PYTHONUTF8'] = '1'
     sys.exit(main())

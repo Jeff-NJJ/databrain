@@ -536,4 +536,7 @@ def main():
 
 
 if __name__ == '__main__':
+    # 中文 Windows 控制台默认 GBK；✅/⚠ 和 sparkline 的 ▁▂▃ 都编不进去，
+    # 不显式改 UTF-8 会在打印那行崩（Linux/macOS 上 no-op）。
+    sys.stdout.reconfigure(encoding='utf-8')
     main()
