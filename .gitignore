@@ -1,0 +1,7 @@
+# 真实语料的未脱敏产物——绝对不进发布包
+.private/
+__pycache__/
+*.pyc
+# 修复前用真实原文生成的旧版数据文件（已迁至 .private/legacy）
+web/real.json
+web/compare.json

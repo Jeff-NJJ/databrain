@@ -1,0 +1,26 @@
+{
+  "阿澈": {
+    "role": "friend",
+    "weight": 8
+  },
+  "老周": {
+    "role": "friend",
+    "weight": 4
+  },
+  "Momo": {
+    "role": "friend",
+    "weight": 7
+  },
+  "奶奶": {
+    "role": "friend",
+    "weight": 10
+  },
+  "K.": {
+    "role": "friend",
+    "weight": 3
+  },
+  "室友": {
+    "role": "friend",
+    "weight": 5
+  }
+}

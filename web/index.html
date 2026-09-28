@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>数据化大脑 · 记忆与内分泌可视化</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --line:#30363d;
+    --fg:#e6edf3; --dim:#8b949e; --accent:#58a6ff;
+    --oxt:#f778ba; --da:#f0883e; --sert:#7ee787; --cort:#ff7b72; --mel:#79c0ff;
+    --val:#58a6ff; --aru:#f0883e; --imp:#bc8cff; --mood:#7ee787; --rel:#f778ba;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{position:sticky;top:0;z-index:10;background:var(--panel);
+         border-bottom:1px solid var(--line);padding:12px 20px;
+         display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.5px}
+  header .sub{color:var(--dim);font-size:12px}
+  .spacer{flex:1}
+  input,button,select{background:var(--panel2);color:var(--fg);
+       border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:13px}
+  button{cursor:pointer}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.45;cursor:default}
+  main{padding:18px 20px 60px;max-width:1500px;margin:0 auto}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .card .k{color:var(--dim);font-size:11px;letter-spacing:.4px}
+  .card .v{font-size:22px;font-weight:600;margin-top:2px}
+  .card .n{color:var(--dim);font-size:11px}
+  section{background:var(--panel);border:1px solid var(--line);
+          border-radius:10px;padding:16px 18px;margin-bottom:18px}
+  h2{margin:0 0 4px;font-size:15px;font-weight:600}
+  .hint{color:var(--dim);font-size:12px;margin-bottom:12px}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--dim)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;font-size:11px;letter-spacing:.4px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.clickable{cursor:pointer}
+  tr.clickable:hover{background:var(--panel2)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;
+       border:1px solid var(--line);color:var(--dim)}
+  .tag.theme{border-color:#8957e5;color:#d2a8ff}
+  .tag.person{border-color:#1f6feb;color:#79c0ff}
+  .tag.epis{border-color:#3fb950;color:#7ee787}
+  .chain{margin:6px 0 12px;padding:10px 12px;background:var(--panel2);
+         border-left:2px solid var(--imp);border-radius:0 6px 6px 0;font-size:12px}
+  .chain div{padding:1px 0;color:var(--dim)}
+  .chain b{color:var(--fg);font-weight:500}
+  .up{color:#7ee787} .down{color:#ff7b72}
+  .filt{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .filt button.active{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+  .scroll{max-height:340px;overflow:auto}
+  .ok{color:#7ee787} .warn{color:#d29922} .bad{color:#ff7b72}
+  .empty{color:var(--dim);padding:20px;text-align:center}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>数据化大脑</h1>
+  <span class="sub" id="status">载入中…</span>
+  <span class="spacer"></span>
+  <div class="filt" id="srcfilt" style="margin:0">
+    <button data-src="synth" class="active">合成场景</button>
+    <button data-src="real">语料</button>
+  </div>
+  <label class="sub">天数 <input id="days" type="number" value="180" min="30" max="365" style="width:66px"></label>
+  <label class="sub">种子 <input id="seed" type="number" value="42" style="width:66px"></label>
+  <button id="rerun">重跑模拟</button>
+</header>
+
+<main>
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>历史认定的轨迹</h2>
+    <div class="hint">客体层（对一个人的整体判断）。竖线是一次<strong>重评</strong>——旧判断被新的经历改写的那一刻。</div>
+    <div id="chart_person"></div>
+    <div class="legend">
+      <span><i style="background:var(--val)"></i>效价 valence</span>
+      <span><i style="background:var(--aru)"></i>唤醒 arousal</span>
+      <span><i style="background:var(--imp)"></i>阻抗（越深越难改）</span>
+      <span><i style="background:#7d8590"></i>重评事件</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>内分泌</h2>
+    <div class="hint">五种激素的逐日曲线，含昼夜节律与相互拮抗。</div>
+    <div id="chart_hormone"></div>
+    <div class="legend">
+      <span><i style="background:var(--oxt)"></i>催产素</span>
+      <span><i style="background:var(--da)"></i>多巴胺</span>
+      <span><i style="background:var(--sert)"></i>血清素</span>
+      <span><i style="background:var(--cort)"></i>皮质醇</span>
+      <span><i style="background:var(--mel)"></i>褪黑素</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>慢变量：长期情感</h2>
+    <div class="hint">不指向任何具体事件的背景水位——这就是「情感」区别于「情绪」的地方。</div>
+    <div id="chart_slow"></div>
+    <div class="legend">
+      <span><i style="background:var(--mood)"></i>心境效价</span>
+      <span><i style="background:var(--aru)"></i>心境唤醒</span>
+      <span><i style="background:var(--rel)"></i>关系温度</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>记忆的三层结构</h2>
+    <div class="hint">点击任意一行展开它的<strong>版本链</strong>——每次改写都留痕，原始判断永不删除。</div>
+    <div class="filt" id="filt">
+      <button data-k="person" class="active">客体层</button>
+      <button data-k="theme">主题层（模式）</button>
+      <button data-k="episodic">情节层</button>
+    </div>
+    <div class="scroll"><table id="tbl"></table></div>
+    <div id="chain"></div>
+  </section>
+
+  <section>
+    <h2>因果链：发生了什么 → 引起了什么 → 结果怎么样 → 短期 → 长期</h2>
+    <div class="hint">点开任意一条，看它一路走下去的完整后果。这是判断"某个经历到底改变了什么"的主线。</div>
+    <div id="chains"></div>
+  </section>
+
+  <section id="secSocial" style="display:none">
+    <h2>社会化测试</h2>
+    <div class="hint">把"像不像人"拆成八个可测的反常信号。≥75 分视为能长期相处不露馅。</div>
+    <div id="social"></div>
+  </section>
+
+  <section id="secCompare" style="display:none">
+    <h2>结果比对：语料 vs 合成场景</h2>
+    <div class="hint">同一个大脑，喂进两种生活：一种是我的真实聊天记录（多年尺度），
+      一种是人为编排的剧本（180 天，含背叛、道歉、冲突）。看它在哪种生活里更像人。</div>
+    <div id="compare"></div>
+  </section>
+
+  <section>
+    <h2>原始事件流（append-only）</h2>
+    <div class="hint">摘要只是索引；这里保留着构成每一次判断的全部原始时刻，只增不改。</div>
+    <div class="scroll"><table id="ev"></table></div>
+  </section>
+
+  <section>
+    <h2>自检</h2>
+    <div id="diag" class="hint"></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+/* 审查A2修复：语料人名/文本是对端可控字符串，直接进 innerHTML
+   就是存储型 XSS。所有字符串插值点一律过 esc()。 */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATA = null;
+let CMP  = null;
+let CUR  = 'person';
+let SRC  = 'synth';
+
+/* ---------- 通用折线图 ---------- */
+function chart(el, series, opt={}){
+  const W = opt.w||1400, H = opt.h||260;
+  const PL=46, PR=14, PT=12, PB=26;
+  const iw = W-PL-PR, ih = H-PT-PB;
+  const ymin = opt.ymin??0, ymax = opt.ymax??1;
+  const xs = series[0]?.pts.map(p=>p[0]) || [];
+  const xmax = Math.max(1, opt.xmax ?? (xs.length? xs[xs.length-1] : 1));
+  const X = v => PL + (v/xmax)*iw;
+  const Y = v => PT + ih - ((v-ymin)/(ymax-ymin))*ih;
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  // 网格
+  for(let i=0;i<=4;i++){
+    const y = PT + ih*i/4, v = ymax-(ymax-ymin)*i/4;
+    s += `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#21262d"/>`;
+    s += `<text x="${PL-8}" y="${y+4}" fill="#6e7681" font-size="11" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+  // x 轴
+  const step = Math.max(1, Math.round(xmax/8));
+  for(let d=0; d<=xmax; d+=step){
+    const x = X(d);
+    s += `<text x="${x}" y="${H-8}" fill="#6e7681" font-size="11" text-anchor="middle">${d}</text>`;
+  }
+  // 标记线（重评）
+  (opt.markers||[]).forEach(m=>{
+    s += `<line x1="${X(m)}" y1="${PT}" x2="${X(m)}" y2="${PT+ih}" stroke="#7d8590" stroke-width="1" stroke-dasharray="3 3" opacity=".65"/>`;
+  });
+  // 曲线
+  series.forEach(se=>{
+    if(!se.pts.length) return;
+    const d = se.pts.map((p,i)=>`${i?'L':'M'}${X(p[0]).toFixed(2)} ${Y(p[1]).toFixed(2)}`).join(' ');
+    s += `<path d="${d}" fill="none" stroke="${se.color}" stroke-width="${se.w||1.8}"
+           ${se.dash?'stroke-dasharray="5 4"':''} opacity="${se.op||1}"/>`;
+  });
+  s += `</svg>`;
+  el.innerHTML = s;
+}
+
+function pick(tl, fn){
+  const out=[];
+  tl.forEach(p=>{ const v = fn(p); if(v!==null && v!==undefined && !Number.isNaN(v)) out.push([p.day,v]); });
+  return out;
+}
+
+/* ---------- 渲染 ---------- */
+function renderCards(){
+  const m = DATA.meta;
+  const cards = [
+    ['模拟天数', m.days, '跨时间'],
+    ['原始事件', m.events_total, 'append-only'],
+    ['客体层', m.persons, '对一个人的认定'],
+    ['主题层', m.themes, '模式'],
+    ['情节层', m.episodic, '具体事件'],
+    ['再巩固次数', m.revisions, '旧判断被改写'],
+  ];
+  $('#cards').innerHTML = cards.map(([k,v,n])=>
+    `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`).join('');
+}
+
+function renderPerson(){
+  const tl = DATA.timeline;
+  const subs = Object.keys(tl[tl.length-1]?.persons || {});
+  const pal = ['#58a6ff','#f778ba','#7ee787','#f0883e'];
+  const series=[];
+  subs.forEach((sb,i)=>{
+    series.push({pts:pick(tl,p=>p.persons[sb]?.v), color:pal[i%4], w:2, op:.95});
+    series.push({pts:pick(tl,p=>p.persons[sb]?.a), color:pal[i%4], w:1.2, op:.42, dash:true});
+    series.push({pts:pick(tl,p=>p.persons[sb]?.imp), color:'#bc8cff', w:1, op:.5, dash:true});
+  });
+  const markers = (DATA.recon_log||[]).map(r=>Math.round(r.day));
+  chart($('#chart_person'), series, {ymin:0, ymax:2.6, h:280, markers:[...new Set(markers)]});
+}
+
+function renderHormones(){
+  const tl = DATA.timeline;
+  const defs=[['oxytocin','#f778ba'],['dopamine','#f0883e'],['serotonin','#7ee787'],
+              ['cortisol','#ff7b72'],['melatonin','#79c0ff']];
+  chart($('#chart_hormone'), defs.map(([k,c])=>({pts:pick(tl,p=>p.hormones[k]),color:c,w:1.6})), {h:260});
+}
+
+function renderSlow(){
+  const tl = DATA.timeline;
+  chart($('#chart_slow'), [
+    {pts:pick(tl,p=>p.mood_valence), color:'#7ee787', w:2},
+    {pts:pick(tl,p=>p.mood_arousal), color:'#f0883e', w:1.6},
+    {pts:pick(tl,p=>p.rel_temp),     color:'#f778ba', w:1.6},
+  ], {h:220});
+}
+
+function rowText(b, kind){
+  const drift = b.drift;
+  const cls = drift>0.001?'up':(drift<-0.001?'down':'');
+  const name = kind==='theme' ? (b.theme_key||b.id) : b.id;
+  return `<tr class="clickable" data-kind="${kind}" data-id="${esc(b.id)}">
+    <td><span class="tag ${kind==='theme'?'theme':(kind==='person'?'person':'epis')}">${
+      kind==='theme'?'模式':(kind==='person'?'客体':'情节')}</span> ${esc(name)}</td>
+    <td class="num">${b.valence.toFixed(3)}</td>
+    <td class="num">${b.valence0.toFixed(3)}</td>
+    <td class="num ${cls}">${drift>=0?'+':''}${drift.toFixed(3)}</td>
+    <td class="num">${b.arousal.toFixed(3)}</td>
+    <td class="num">${b.impedance.toFixed(2)}</td>
+    <td class="num">${b.revisions}</td>
+    <td class="num">${b.contact_count||0}</td>
+    <td class="num ${(b.fam_drift||0)>0.001?'up':((b.fam_drift||0)<-0.001?'down':'')}">${(b.fam_drift||0)>=0?'+':''}${(b.fam_drift||0).toFixed(3)}</td>
+    <td class="num" title="累计疏远天数（联系后当前段清零，累计不清零）">${(b.cool_total||b.cool_days||0).toFixed(0)}</td>
+    <td class="num">${b.importance.toFixed(1)}</td>
+    <td class="num">${b.score.toFixed(1)}</td>
+    <td class="num">${b.archived?'已归档':'活跃'}</td>
+  </tr>`;
+}
+
+function renderTable(){
+  const src = CUR==='person'?DATA.persons:(CUR==='theme'?DATA.themes:DATA.episodic);
+  const rows = [...src].sort((a,b)=>b.impedance-a.impedance);
+  $('#tbl').innerHTML = `<tr><th>记忆</th><th class="num">现值</th><th class="num">初值</th>
+    <th class="num">漂移</th><th class="num">唤醒</th><th class="num">阻抗</th>
+    <th class="num">重评</th><th class="num">接触</th><th class="num">陪伴漂移</th>
+    <th class="num">累计疏远</th><th class="num">重要度</th><th class="num">分数</th>
+    <th class="num">状态</th></tr>` + rows.map(b=>rowText(b,CUR)).join('');
+  $('#tbl').querySelectorAll('tr.clickable').forEach(tr=>{
+    tr.onclick = ()=>{
+      const b = src.find(x=>x.id===tr.dataset.id);
+      showChain(b);
+    };
+  });
+}
+
+function showChain(b){
+  const all = [...DATA.persons, ...DATA.themes, ...DATA.episodic];
+  const full = all.find(x=>x.id===b.id) || b;
+  // 版本链不在 export 里，从重评日志按天还原
+  const logs = (DATA.recon_log||[]).filter(r=>r.bucket===b.id);
+  if(!logs.length){
+    $('#chain').innerHTML = `<div class="chain"><div><b>${esc(b.id)}</b> 从未被改写过 —— 原始判断保持至今。</div></div>`;
+    return;
+  }
+  $('#chain').innerHTML = `<div class="chain"><div><b>${esc(b.id)}</b> 的改写记录（${logs.length} 次）</div>` +
+    logs.map(r=>{
+      const up = (r.detail.includes('Δ+'));
+      return `<div>D${r.day} &nbsp;<span class="${up?'up':'down'}">${esc(r.detail)}</span></div>`;
+    }).join('') + `</div>`;
+}
+
+function renderEvents(){
+  const ev = DATA.events.slice(-300).reverse();
+  $('#ev').innerHTML = `<tr><th class="num">#</th><th class="num">天</th><th class="num">时刻</th>
+    <th>客体</th><th>刺激</th><th class="num">效价</th><th class="num">唤醒</th>
+    <th class="num">显著性</th><th class="num">编码调制</th><th>命中的倾向</th></tr>` +
+    ev.map(e=>{
+      const h = Math.round(e.t%24);
+      const scene = h<9?'早晨':(h<18?'工作':(h<23?'晚间':'深夜'));
+      return `<tr><td class="num">${esc(e.id)}</td><td class="num">${Math.floor(e.t/24)}</td>
+        <td class="num">${String(h).padStart(2,'0')}:00 ${scene}</td>
+        <td>${esc(e.subject)}</td><td>${esc(e.stim)}</td>
+        <td class="num">${e.v.toFixed(3)}</td><td class="num">${e.a.toFixed(3)}</td>
+        <td class="num">${e.salience.toFixed(3)}</td><td class="num">${e.mod.toFixed(2)}</td>
+        <td>${esc((e.hits||[]).join('、'))||'—'}</td></tr>`;
+    }).join('');
+}
+
+function delta(b,a){
+  const d = a-b;
+  if(Math.abs(d)<0.005) return `<span style="color:#6e7681">≈</span>`;
+  return `<span class="${d>0?'up':'down'}">${d>0?'+':''}${d.toFixed(3)}</span>`;
+}
+
+function hormoneTable(before, after){
+  const ks = Object.keys(before.h||{});
+  const nm = {oxytocin:'催产素',dopamine:'多巴胺',serotonin:'血清素',cortisol:'皮质醇',melatonin:'褪黑素'};
+  return `<table style="width:auto">` + ks.map(k=>
+    `<tr><td>${esc(nm[k]||k)}</td><td class="num">${before.h[k].toFixed(3)}</td>
+     <td class="num">→</td><td class="num">${after.h[k].toFixed(3)}</td>
+     <td class="num">${delta(before.h[k],after.h[k])}</td></tr>`).join('') + `</table>`;
+}
+
+/* 一条因果链上，认定值的走向条：事前 → 当时 → 7天 → 30天 → 90天 */
+function traj(c){
+  const pts = [
+    ['事前', c.before.pv], ['当时', c.after.pv],
+    ['7天', c.marks['7']?c.marks['7'].pv:null],
+    ['30天', c.marks['30']?c.marks['30'].pv:null],
+    ['90天', c.marks['90']?c.marks['90'].pv:null],
+  ];
+  const vs = pts.map(p=>p[1]).filter(v=>v!=null);
+  if(vs.length<2) return `<div style="color:#6e7681">数据不足</div>`;
+  const lo = Math.min(...vs)-0.004, hi = Math.max(...vs)+0.004;
+  const W=560, H=96, PL=8, PR=8, PT=10, PB=22;
+  const iw=W-PL-PR, ih=H-PT-PB;
+  const X=i=>PL+iw*i/(pts.length-1);
+  const Y=v=>PT+ih-((v-lo)/Math.max(hi-lo,1e-9))*ih;
+  let s=`<svg viewBox="0 0 ${W} ${H}" style="max-width:560px">`;
+  // 中性线 0.5
+  if(0.5>=lo && 0.5<=hi){
+    s+=`<line x1="${PL}" y1="${Y(0.5)}" x2="${W-PR}" y2="${Y(0.5)}" stroke="#30363d" stroke-dasharray="4 4"/>`;
+    s+=`<text x="${W-PR}" y="${Y(0.5)-3}" fill="#6e7681" font-size="9" text-anchor="end">中性 0.5</text>`;
+  }
+  // 折线（跳过缺失点）
+  let d='', started=false;
+  pts.forEach((p,i)=>{ if(p[1]==null){started=false;return;}
+    d+=`${started?'L':'M'}${X(i).toFixed(1)} ${Y(p[1]).toFixed(1)} `; started=true; });
+  s+=`<path d="${d}" fill="none" stroke="#bc8cff" stroke-width="2"/>`;
+  pts.forEach((p,i)=>{
+    if(p[1]==null){
+      s+=`<text x="${X(i)}" y="${PT+ih+16}" fill="#484f58" font-size="10" text-anchor="middle">${p[0]} —</text>`;
+      return;
+    }
+    s+=`<circle cx="${X(i)}" cy="${Y(p[1])}" r="3.2" fill="#bc8cff"/>`;
+    s+=`<text x="${X(i)}" y="${Y(p[1])-8}" fill="#e6edf3" font-size="10" text-anchor="middle">${p[1].toFixed(3)}</text>`;
+    s+=`<text x="${X(i)}" y="${PT+ih+16}" fill="#6e7681" font-size="10" text-anchor="middle">${p[0]}</text>`;
+  });
+  s+=`</svg>`;
+  // 一句话结论
+  const end = pts[pts.length-1][1], start = c.before.pv;
+  let note='';
+  if(end!=null && start!=null){
+    const dv = end-start;
+    if(Math.abs(dv)<0.01) note=`90 天过去，回到了事发前的水平 —— 这件事没有留下痕迹。`;
+    else if(dv>0) note=`90 天后反而比事发前更高（+${dv.toFixed(3)}）—— 后续相处盖过了这件事。`;
+    else note=`90 天后仍比事发前低（${dv.toFixed(3)}）—— 这件事留下了长期的痕迹。`;
+  }
+  return s + (note?`<div style="color:#8b949e;font-size:12px">${note}</div>`:'');
+}
+
+function renderChains(){
+  const cs = DATA.chains;
+  const box = $('#chains');
+  if(!cs || !cs.length){ box.innerHTML = `<div class="empty">当前数据源没有因果链（切到「语料」）</div>`; return; }
+  box.innerHTML = cs.slice(0,20).map((c,i)=>{
+    const m7 = c.marks['7'], m30 = c.marks['30'], m90 = c.marks['90'];
+    const pvb = c.before.pv, pva = c.after.pv;
+    return `<div class="chain" style="cursor:pointer" data-i="${i}">
+      <div><b>[${esc(c.date)}] ${esc(c.subject)}</b> · ${esc(c.stim)} ·
+        <span class="tag">冲击 ${c.salience.toFixed(2)}</span>
+        <span style="color:#6e7681">展开看完整后果 ▾</span></div>
+      <div class="body" style="display:none">
+        <div style="margin:8px 0 4px;color:#8b949e">① 发生了什么</div>
+        <div>“${esc(c.text)}”</div>
+        <div>强度 ${c.intensity} · 显著性 ${c.salience.toFixed(3)} · 编码调制 ×${c.mod}</div>
+
+        <div style="margin:10px 0 4px;color:#8b949e">② 引起了什么（激素与情绪的即时变化）</div>
+        ${hormoneTable(c.before,c.after)}
+        <div>情绪 效价 ${c.before.emo_v.toFixed(3)} → ${c.after.emo_v.toFixed(3)}
+          唤醒 ${c.before.emo_a.toFixed(3)} → ${c.after.emo_a.toFixed(3)}</div>
+        <div>命中的倾向：${esc((c.hits||[]).join('、'))||'无'}</div>
+
+        <div style="margin:10px 0 4px;color:#8b949e">③ 结果怎么样（写进了记忆）</div>
+        <div>动作 <b>${esc(c.action)}</b> ${esc(c.detail||'')}</div>
+        <div>对这个人的判断 ${pvb!=null?pvb.toFixed(3):'—'} → ${pva!=null?pva.toFixed(3):'—'}
+          ${pvb!=null&&pva!=null?delta(pvb,pva):''}</div>
+
+        <div style="margin:10px 0 4px;color:#8b949e">④⑤ 短期 → 长期：对这个人的认定一路怎么走的</div>
+        ${traj(c)}
+
+        <div style="margin:10px 0 4px;color:#8b949e">短期（7 天后）</div>
+        <div>认定 ${m7?m7.pv.toFixed(3):'—'} · 当下情绪 ${m7?m7.emo_v.toFixed(3):'—'} · 记忆强度 ${m7?m7.score:'—'}</div>
+        <div style="margin:8px 0 4px;color:#8b949e">长期（90 天后）</div>
+        <div>认定 ${m90?m90.pv.toFixed(3):'—'} · 阻抗 ${m90?m90.imp:'—'} ·
+          期间又被改写 ${m90?m90.revisions:0} 次</div>
+        ${m30?`<div style="color:#6e7681">中间（30 天）：${m30.pv.toFixed(3)}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.chain').forEach(el=>{
+    el.onclick = e=>{
+      if(e.target.closest('.body') && e.target.tagName==='TABLE') return;
+      const b = el.querySelector('.body');
+      b.style.display = b.style.display==='none' ? 'block':'none';
+    };
+  });
+}
+
+function renderSocial(){
+  const t = DATA.social_test;
+  const sec = $('#secSocial');
+  if(!t){ sec.style.display='none'; return; }
+  sec.style.display='';
+  const names={emotion_std:'情绪波动幅度',switch_speed:'情绪切换速度',
+    calm_ratio:'平淡期占比',extreme_ratio:'极端情绪占比',fab_decay:'负性记忆消退',
+    habituation_drop:'重复刺激钝化',spontaneous_rate:'自发回忆频率',ambivalence_max:'矛盾情感存在度'};
+  const rows = Object.entries(t.scores).map(([k,s])=>{
+    const v = s.value===null?'—':s.value.toFixed(4);
+    const w = Math.max(0,Math.min(100,s.score));
+    const col = w>=80?'#7ee787':(w>=50?'#d29922':'#ff7b72');
+    return `<tr><td>${names[k]||k}</td><td class="num">${v}</td>
+      <td style="width:40%"><div style="background:#21262d;border-radius:4px;height:9px">
+        <div style="background:${col};width:${w}%;height:9px;border-radius:4px"></div></div></td>
+      <td class="num">${s.score.toFixed(0)}</td><td>${s.tag}</td></tr>`;
+  }).join('');
+  const tot = t.total, tc = tot>=75?'#7ee787':(tot>=50?'#d29922':'#ff7b72');
+  $('#social').innerHTML = `<table>${rows}</table>
+    <div style="margin-top:10px;font-size:16px">总分
+      <b style="color:${tc}">${tot}</b> / 100
+      ${tot>=75?'✅ 可以长期相处':'⚠️ 仍有露馅风险'}</div>`;
+}
+
+function pct(x){ return x==null ? '—' : (x*100).toFixed(1)+'%'; }
+function num(x, d=4){ return x==null ? '—' : x.toFixed(d); }
+
+function renderCompare(){
+  const c = CMP;
+  const sec = $('#secCompare');
+  if(!c){ sec.style.display='none'; return; }
+  sec.style.display='';
+
+  const rows = c.social.map(s=>{
+    const d = s.diff;
+    const dcol = d==null ? '#6e7681' : (Math.abs(d)<0.02 ? '#6e7681' : (d>0?'#7ee787':'#ff7b72'));
+    return `<tr><td>${esc(s.label)}</td>
+      <td class="num">${num(s.real)}</td><td class="num">${num(s.synth)}</td>
+      <td class="num" style="color:${dcol}">${d==null?'—':(d>0?'+':'')+d.toFixed(4)}</td>
+      <td class="num" style="color:${s.real_score>=80?'#7ee787':(s.real_score>=50?'#d29922':'#ff7b72')}">${s.real_score.toFixed(0)}</td>
+      <td class="num" style="color:${s.synth_score>=80?'#7ee787':(s.synth_score>=50?'#d29922':'#ff7b72')}">${s.synth_score.toFixed(0)}</td></tr>`;
+  }).join('');
+
+  const snapRow = (name, s)=>`<tr><td>${esc(name)}</td>
+    <td class="num">${s.days}</td><td class="num">${s.events}</td>
+    <td class="num">${s.persons}</td><td class="num">${s.revisions}</td>
+    <td class="num">${num(s.valence_mean,3)}</td>
+    <td class="num">${num(s.valence_min,3)} … ${num(s.valence_max,3)}</td></tr>`;
+
+  const bar = (s)=>{
+    const n = s.dist.total||1;
+    return `<div style="display:flex;height:12px;border-radius:4px;overflow:hidden;background:#21262d">
+      <div style="background:#7ee787;width:${(s.dist.pos*100).toFixed(1)}%"></div>
+      <div style="background:#ff7b72;width:${(s.dist.neg*100).toFixed(1)}%"></div>
+      <div style="background:#484f58;width:${(s.dist.neutral*100).toFixed(1)}%"></div></div>
+      <div style="color:#6e7681;font-size:11px;margin-top:3px">
+        正向 ${pct(s.dist.pos)} · 负向 ${pct(s.dist.neg)} · 中性 ${pct(s.dist.neutral)}</div>`;
+  };
+
+  const people = (s, title)=>`<div style="flex:1;min-width:260px">
+    <div style="color:#8b949e;font-size:12px;margin-bottom:5px">${title}</div>
+    <table>${s.people.map(p=>`<tr><td>${esc(p.id)}</td>
+      <td class="num">${p.v.toFixed(3)}</td>
+      <td class="num">${p.imp}</td>
+      <td class="num">${p.rev}</td></tr>`).join('')}</table></div>`;
+
+  $('#compare').innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div class="card" style="flex:1;min-width:150px"><div class="k">语料总分</div>
+        <div class="v" style="color:${c.real_total>=75?'#7ee787':'#ff7b72'}">${c.real_total}</div>
+        <div class="n">${c.real.days} 天 · ${c.real.events} 件事</div></div>
+      <div class="card" style="flex:1;min-width:150px"><div class="k">合成场景总分</div>
+        <div class="v" style="color:${c.synth_total>=75?'#7ee787':'#ff7b72'}">${c.synth_total}</div>
+        <div class="n">${c.synth.days} 天 · ${c.synth.events} 件事</div></div>
+    </div>
+
+    <div style="color:#8b949e;font-size:12px;margin:12px 0 5px">八项指标对照</div>
+    <table><tr><th>指标</th><th class="num">真实</th><th class="num">合成</th>
+      <th class="num">差值</th><th class="num">真实分</th><th class="num">合成分</th></tr>${rows}</table>
+
+    <div style="color:#8b949e;font-size:12px;margin:16px 0 5px">规模与改写</div>
+    <table><tr><th>数据源</th><th class="num">天</th><th class="num">事件</th>
+      <th class="num">客体</th><th class="num">改写次数</th>
+      <th class="num">平均认定</th><th class="num">认定区间</th></tr>
+      ${snapRow('语料', c.real)}${snapRow('合成场景', c.synth)}</table>
+
+    <div style="color:#8b949e;font-size:12px;margin:16px 0 5px">两种生活的刺激构成</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <div style="color:#e6edf3;font-size:13px;margin-bottom:5px">真实：绝大多数是日常</div>
+        ${bar(c.real)}</div>
+      <div style="flex:1;min-width:260px">
+        <div style="color:#e6edf3;font-size:13px;margin-bottom:5px">合成：戏剧密度被人为拉高</div>
+        ${bar(c.synth)}</div>
+    </div>
+
+    <div style="color:#8b949e;font-size:12px;margin:16px 0 5px">最终对每个人的认定（现值 / 阻抗 / 被改写次数）</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      ${people(c.real,'语料')}${people(c.synth,'合成场景')}
+    </div>`;
+}
+
+function renderDiag(){
+  const d = DATA.diagnostics||{};
+  const f = d.failures||[], w = d.warnings||[];
+  let s = '';
+  s += f.length ? `<div class="bad">✗ FAIL ${f.length} 项</div>` : `<div class="ok">✓ 无致命错误</div>`;
+  s += w.length ? `<div class="warn">⚠ WARN ${w.length} 项</div>` : `<div class="ok">✓ 无警告</div>`;
+  /* 三轮审查 N8（纵深防御）：诊断串里会嵌 bucket id / 激素键。
+     目前这两者都来自引擎自己的常量，不是语料可控内容，所以现在打不出去；
+     但同一处将来一旦被喂进真实语料的字段，这里就是下一个存储型 XSS。
+     跟 A2 一样先过 esc()，成本零。 */
+  [...f,...w].forEach(x=> s += `<div>· ${esc(x)}</div>`);
+  const ex = d.hormone_extremes||{};
+  s += `<div style="margin-top:8px">激素极值：</div>`;
+  Object.entries(ex).forEach(([k,v])=> s += `<div>· ${esc(k)} [${v[0]}, ${v[1]}]</div>`);
+  $('#diag').innerHTML = s;
+}
+
+function renderAll(){
+  renderCards(); renderPerson(); renderHormones(); renderSlow();
+  renderTable(); renderChains(); renderSocial(); renderCompare();
+  renderEvents(); renderDiag();
+  // 合成场景没有真实语料那套诊断
+  $('#rerun').disabled = (SRC==='real');
+  $('#days').disabled = (SRC==='real');
+  $('#seed').disabled = (SRC==='real');
+}
+
+/* ---------- 数据 ---------- */
+let retried = false;
+
+/* 带自愈的 JSON 拉取：
+   空响应/解析失败通常意味着后端那一下没接上（进程重启、代理抖动），
+   先原样重试一次，还不行就明确告诉用户刷新，而不是甩一行 SyntaxError */
+/* 四轮审查 N17：设了 DATABRAIN_TOKEN 之后，页面里没有任何地方能交出它，
+   于是 /api/* 全部 401，可视化整页空白 —— 而"设口令"恰恰是服务端
+   拒绝在非回环地址裸奔时给出的补救办法（N14）。等于推荐了一条走不通的路。
+   口令存在 sessionStorage（不写 localStorage：关掉标签页就没了，
+   也不会跟着备份/漫游配置跑）。绝不进 URL —— 那会落到浏览器历史、
+   Referer 和服务端访问日志里。 */
+const tokenStore = {
+  get(){ return sessionStorage.getItem('db_token') || ''; },
+  set(v){ v ? sessionStorage.setItem('db_token', v) : sessionStorage.removeItem('db_token'); },
+  ask(reason){
+    const v = window.prompt(reason || '后端启用了口令（DATABRAIN_TOKEN），请输入：');
+    if(v === null) return false;
+    this.set(v.trim());
+    return true;
+  }
+};
+
+async function fetchJSON(url, label){
+  let unauth = 0;
+  for(let attempt=1; attempt<=2; attempt++){
+    const r = await fetch(url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now(),
+                          {headers: {'X-Databrain-Token': tokenStore.get()}});
+    if(r.status === 401){
+      // 口令缺失或错误：问一次再重试，而不是把 401 的 JSON 当解析失败报出去。
+      // 上限 5 次 —— 否则反复输错会变成一个无限弹窗循环。
+      if(unauth++ < 5 && tokenStore.ask(label + ' 需要口令（401）。请输入 DATABRAIN_TOKEN：')){
+        attempt = 0; continue;
+      }
+      throw new Error(`${label}：后端要求口令（HTTP 401），已取消`);
+    }
+    const text = await r.text();
+    try{
+      return JSON.parse(text);
+    }catch(e){
+      if(attempt < 2){
+        await new Promise(res=>setTimeout(res, 1200));
+        continue;
+      }
+      const head = text.trim().slice(0, 60);
+      throw new Error(
+        `${label} 返回异常（HTTP ${r.status}，${text.length} 字节` +
+        (head ? `，开头是 "${head}"` : '，内容为空') +
+        `）。后端可能刚重启，几秒后刷新页面即可`);
+    }
+  }
+}
+
+async function load(rerun){
+  const btn = $('#rerun'); btn.disabled = true;
+  $('#status').textContent = rerun ? '模拟中…（跨时间跨场景，约需几十秒）' : '载入中…';
+  try{
+    const url = rerun ? `/api/run?days=${$('#days').value}&seed=${$('#seed').value}` : '/api/data';
+    const j = await fetchJSON(url, '模拟结果');
+    if(j.status === 'running'){ $('#status').textContent = '服务端仍在跑，请稍候刷新'; return; }
+    DATA = j; renderAll();
+    $('#status').textContent = `合成场景 · ${DATA.meta.days} 天 · ${DATA.meta.events_total} 条事件 · seed ${$('#seed').value}`;
+  }catch(e){
+    $('#status').textContent = '载入失败：' + e.message;
+  }finally{ btn.disabled = (SRC==='real'); }
+}
+
+async function loadReal(){
+  $('#status').textContent = '载入语料结果…';
+  try{
+    const j = await fetchJSON('/api/real', '语料');
+    if(j.error){ $('#status').textContent = '语料结果不可用：' + j.error; return; }
+    DATA = j; renderAll();
+    $('#status').textContent =
+      `语料 · ${DATA.span_days} 天 · ${DATA.meta.events_total} 件事 · 人物 ${DATA.people_kept.length} 位 · 社会化 ${DATA.social_test.total} 分`;
+  }catch(e){
+    $('#status').textContent = '载入失败：' + e.message;
+  }
+}
+
+async function loadCompare(){
+  try{
+    const j = await fetchJSON('/api/compare', '对照结果');
+    if(j && !j.error){ CMP = j; if(DATA) renderCompare(); }
+  }catch(e){ /* 对照结果可选，缺了不影响主流程 */ }
+}
+
+$('#rerun').onclick = ()=>load(true);
+$('#filt').onclick = e=>{
+  if(e.target.tagName!=='BUTTON') return;
+  $('#filt').querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  CUR = e.target.dataset.k; renderTable();
+};
+$('#srcfilt').onclick = e=>{
+  if(e.target.tagName!=='BUTTON') return;
+  const src = e.target.dataset.src;
+  if(src === SRC) return;
+  $('#srcfilt').querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  SRC = src;
+  if(src === 'real') loadReal(); else load(false);
+};
+load(false);
+loadCompare();
+</script>
+</body>
+</html>
